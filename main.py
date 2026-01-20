@@ -1,28 +1,80 @@
-from config import Config
+import argparse
+
 from detector import ArpSpoofDetector
-from transmitter import HoneypotTransmitter
+from responders import (
+    LogResponder,
+    AlertResponder,
+    ArpRestorationResponder,
+    CompositeResponder
+)
+from deception import DeceptionResponder
 from defense_system import DefenseSystem
 
-if __name__ == "__main__":
-    # Dependency Injection
 
-    # 1. Create the MITM Detector
-    # FIX: ArpSpoofDetector does NOT take a port argument. It finds the Gateway automatically.
-    my_detector = ArpSpoofDetector()
+def main():
+    parser = argparse.ArgumentParser(
+        description="ARP Spoofing Defense System",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py                     Basic detection and defense
+  python main.py --deception         Enable honeytoken injection
+  python main.py --beacon my.domain  Custom beacon domain for tracking
+        """
+    )
+    parser.add_argument(
+        "--deception",
+        action="store_true",
+        help="Enable active defense with honeytoken injection"
+    )
+    parser.add_argument(
+        "--beacon",
+        type=str,
+        default="canary.yourdomain.com",
+        help="Domain for tracking beacon URLs (default: canary.yourdomain.com)"
+    )
+    parser.add_argument(
+        "--interface",
+        type=str,
+        default=None,
+        help="Network interface to monitor"
+    )
 
-    # 2. Create the specific responder (Honeypot Broadcast)
-    my_responder = HoneypotTransmitter()
+    args = parser.parse_args()
 
-    # 3. Inject them into the system
-    # FIX: We MUST provide the IP so DefenseSystem finds the correct Wi-Fi adapter
-    # Check your ipconfig to confirm this is your Windows IP
-    my_ip = "192.168.0.104"
+    detector = ArpSpoofDetector()
 
-    system = DefenseSystem(my_detector, my_responder, listen_ip=my_ip)
+    responder_chain = [
+        AlertResponder(),
+        LogResponder("attack_log.txt"),
+        ArpRestorationResponder()
+    ]
+
+    if args.deception:
+        print("[Config] Active defense ENABLED - honeytokens will be injected")
+        responder_chain.append(
+            DeceptionResponder(
+                beacon_domain=args.beacon,
+                injection_count=10
+            )
+        )
+
+    responder = CompositeResponder(responder_chain)
+
+    system = DefenseSystem(
+        detector=detector,
+        responder=responder,
+        listen_ip=None,
+        continuous=True
+    )
 
     try:
-        system.start_surveillance()
+        system.start()
     except PermissionError:
-        print("[Error] Access Denied. Please run as Administrator/Root.")
+        print("[Error] Run as Administrator/root")
     except Exception as e:
-        print(f"[Error] System Failure: {e}")
+        print(f"[Error] {e}")
+
+
+if __name__ == "__main__":
+    main()
