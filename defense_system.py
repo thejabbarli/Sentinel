@@ -1,62 +1,76 @@
-import sys
-from scapy.all import sniff, get_if_list, get_if_addr, conf
-from interfaces import IAttackDetector, IResponder
+from typing import Optional
+
+from scapy.all import sniff, get_if_list, get_if_addr
+
+from interfaces import IDetector, IResponder
 
 
 class DefenseSystem:
-    """
-    The Main Controller.
-    Injects dependencies and manages the lifecycle.
-    """
-
-    def __init__(self, detector: IAttackDetector, responder: IResponder, listen_ip="192.168.0.104"):
+    def __init__(
+            self,
+            detector: IDetector,
+            responder: IResponder,
+            listen_ip: Optional[str] = None,
+            continuous: bool = True
+    ):
         self.detector = detector
         self.responder = responder
         self.listen_ip = listen_ip
-        self.is_active = False
+        self.continuous = continuous
+        self.running = False
+        self.threats_detected = 0
 
-    def start_surveillance(self):
-        # We need access to the port for the log message,
-        # but since we rely on the abstract interface, we check if it has the attribute.
-        port_info = getattr(self.detector, 'port', 'Unknown')
+    def start(self):
+        iface = self._resolve_interface()
 
-        # Auto-detect the correct interface for the specific IP
-        # This handles the complexity of having VMware + VPN + WiFi adapters
-        target_iface = self._find_interface_for_ip(self.listen_ip)
-
-        if target_iface:
-            print(f"[System] Locked onto Interface: {target_iface} (IP: {self.listen_ip})")
+        print(f"[System] Starting ARP surveillance")
+        if iface:
+            print(f"[System] Interface: {iface}")
         else:
-            print(f"[Warning] Could not find interface for {self.listen_ip}. Using Scapy default.")
-            target_iface = None
+            print("[System] Using default interface")
 
-        print(f"[System] Surveillance Active. Tripwire set on Port {port_info}")
+        self.running = True
 
-        self.is_active = True
-        # Sniff only TCP packets to reduce noise
-        # We explicitly pass 'iface' to ensure we listen on the right adapter
-        sniff(filter="arp", iface=target_iface, prn=self._traffic_handler, store=0)
-
-    def _find_interface_for_ip(self, target_ip):
-        """Helper to find the interface name associated with a specific IP."""
         try:
-            for iface in get_if_list():
-                if get_if_addr(iface) == target_ip:
-                    return iface
-        except Exception as e:
-            print(f"[Debug] Error finding interface: {e}")
-        return None
+            sniff(
+                filter="arp",
+                iface=iface,
+                prn=self._process_packet,
+                store=0,
+                stop_filter=lambda _: not self.running
+            )
+        except KeyboardInterrupt:
+            print("\n[System] Stopped by user")
+        finally:
+            self._print_summary()
 
-    def _traffic_handler(self, packet):
-        if not self.is_active:
+    def stop(self):
+        self.running = False
+
+    def _process_packet(self, packet):
+        threat = self.detector.analyze(packet)
+
+        if threat is None:
             return
 
-        # 1. Analyze
-        is_attack = self.detector.analyze_packet(packet)
+        self.threats_detected += 1
+        self.responder.respond(threat)
 
-        # 2. Respond
-        if is_attack:
-            self.responder.execute()
-            self.is_active = False
-            print("[System] Entering Standby mode (Response Sent). Restart script to reset.")
-            sys.exit(0)
+        if not self.continuous:
+            self.running = False
+
+    def _resolve_interface(self) -> Optional[str]:
+        if not self.listen_ip:
+            return None
+
+        try:
+            for iface in get_if_list():
+                if get_if_addr(iface) == self.listen_ip:
+                    return iface
+        except Exception:
+            pass
+
+        return None
+
+    def _print_summary(self):
+        print(f"\n[System] Session ended. Threats detected: {self.threats_detected}")

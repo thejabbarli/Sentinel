@@ -1,15 +1,25 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Optional
 
-class IAttackDetector(ABC):
-    """Interface for any logic that detects an intrusion."""
+
+@dataclass
+class ThreatInfo:
+    threat_type: str
+    source_ip: str
+    source_mac: str
+    expected_mac: Optional[str] = None
+    timestamp: Optional[str] = None
+    raw_packet: Optional[object] = None
+
+
+class IDetector(ABC):
     @abstractmethod
-    def analyze_packet(self, packet) -> bool:
-        """Returns True if the packet is considered an attack."""
+    def analyze(self, packet) -> Optional[ThreatInfo]:
         pass
 
+
 class IResponder(ABC):
-    """Interface for any action taken after detection."""
     @abstractmethod
-    def execute(self):
-        """Executes the counter-measure."""
+    def respond(self, threat: ThreatInfo) -> bool:
         pass

@@ -1,8 +1,11 @@
-# Shared constants for the Defense System
+from dataclasses import dataclass
+from typing import Optional
 
+
+@dataclass
 class Config:
-    TRIPWIRE_PORT = 9999          # The port that triggers the alarm
-    BROADCAST_MAC = "ff:ff:ff:ff:ff:ff"
-    FAKE_SRC_IP = "45.33.32.156"  # The IP we pretend to send to
-    PAYLOAD_FILE = "secret_assets.txt"
-    INTERFACE = None              # None = Scapy chooses default
+    log_file: str = "defense_log.txt"
+    alert_on_detection: bool = True
+    restore_arp_on_detection: bool = True
+    interface: Optional[str] = None
+    listen_ip: Optional[str] = None
