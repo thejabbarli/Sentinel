@@ -1,0 +1,1 @@
+{"timestamp": "2026-01-21T00:28:29.832381", "attacker_ip": "192.168.0.101", "method": "GET", "path": "/webhook/abc123", "user_agent": "curl/8.15.0", "headers": {"Host": "192.168.0.103:8080", "User-Agent": "curl/8.15.0", "Accept": "*/*"}}

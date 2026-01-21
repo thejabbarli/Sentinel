@@ -1,7 +1,5 @@
-import os
 import subprocess
 import platform
-from datetime import datetime
 from typing import List
 
 from scapy.layers.l2 import Ether, ARP
@@ -50,6 +48,10 @@ class ArpRestorationResponder(IResponder):
         self.restore_count = restore_count
 
     def respond(self, threat: ThreatInfo) -> bool:
+        if not threat.expected_mac:
+            print("[Defense] Cannot restore ARP - no expected MAC available")
+            return False
+
         print("[Defense] Attempting ARP table restoration...")
 
         success = self._send_correction_packets(threat)
@@ -74,6 +76,9 @@ class ArpRestorationResponder(IResponder):
 
             print(f"[Defense] Sent {self.restore_count} corrective ARP packets")
             return True
+        except PermissionError:
+            print("[Defense] Restoration failed: need root/admin privileges")
+            return False
         except Exception as e:
             print(f"[Defense] Restoration failed: {e}")
             return False
@@ -86,14 +91,51 @@ class ArpRestorationResponder(IResponder):
                 check=False
             )
             print("[Defense] Requested ARP cache flush")
+        except FileNotFoundError:
+            pass  # netsh not available
         except Exception:
             pass
 
 
 class CompositeResponder(IResponder):
-    def __init__(self, responders: List[IResponder]):
+    """
+    Executes multiple responders in sequence.
+    
+    Design decision: Returns True if ANY responder succeeds.
+    Rationale: We want alerting/logging to work even if ARP restoration fails.
+    Each responder failure is logged individually.
+    """
+
+    def __init__(self, responders: List[IResponder], fail_fast: bool = False):
+        """
+        Args:
+            responders: List of responders to execute
+            fail_fast: If True, stops on first failure. If False (default),
+                      runs all responders regardless of individual failures.
+        """
         self.responders = responders
+        self.fail_fast = fail_fast
 
     def respond(self, threat: ThreatInfo) -> bool:
-        results = [r.respond(threat) for r in self.responders]
-        return all(results)
+        if not self.responders:
+            return True
+
+        results = []
+        for responder in self.responders:
+            try:
+                result = responder.respond(threat)
+                results.append(result)
+                
+                if not result and self.fail_fast:
+                    print(f"[Composite] {type(responder).__name__} failed, stopping chain")
+                    break
+                    
+            except Exception as e:
+                print(f"[Composite] {type(responder).__name__} raised exception: {e}")
+                results.append(False)
+                
+                if self.fail_fast:
+                    break
+
+        # Success if at least one responder worked
+        return any(results)

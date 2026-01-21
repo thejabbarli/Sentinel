@@ -1,4 +1,3 @@
-import sys
 from datetime import datetime
 from typing import Optional
 
@@ -6,6 +5,11 @@ from scapy.layers.l2 import ARP, getmacbyip
 from scapy.config import conf
 
 from interfaces import IDetector, ThreatInfo
+
+
+class GatewayResolutionError(Exception):
+    """Raised when gateway cannot be detected or resolved."""
+    pass
 
 
 class ArpSpoofDetector(IDetector):
@@ -41,15 +45,23 @@ class ArpSpoofDetector(IDetector):
         )
 
     def _detect_gateway(self) -> str:
+        """Detect default gateway IP. Raises GatewayResolutionError on failure."""
         try:
-            return conf.route.route("0.0.0.0")[2]
-        except Exception:
-            print("[Error] Cannot detect gateway. Check network connection.")
-            sys.exit(1)
+            gateway = conf.route.route("0.0.0.0")[2]
+            if not gateway or gateway == "0.0.0.0":
+                raise GatewayResolutionError("No default gateway found")
+            return gateway
+        except (IndexError, AttributeError) as e:
+            raise GatewayResolutionError(f"Cannot detect gateway: {e}")
+        except Exception as e:
+            raise GatewayResolutionError(f"Unexpected error detecting gateway: {e}")
 
     def _resolve_mac(self, ip: str) -> str:
-        mac = getmacbyip(ip)
-        if not mac:
-            print(f"[Error] Cannot resolve MAC for {ip}")
-            sys.exit(1)
-        return mac
+        """Resolve MAC address for IP. Raises GatewayResolutionError on failure."""
+        try:
+            mac = getmacbyip(ip)
+            if not mac:
+                raise GatewayResolutionError(f"Cannot resolve MAC for {ip} - no response")
+            return mac
+        except Exception as e:
+            raise GatewayResolutionError(f"MAC resolution failed for {ip}: {e}")
