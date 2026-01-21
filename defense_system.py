@@ -41,6 +41,9 @@ class DefenseSystem:
             )
         except KeyboardInterrupt:
             print("\n[System] Stopped by user")
+        except PermissionError:
+            print("[System] Permission denied - run as root/administrator")
+            raise
         finally:
             self._print_summary()
 
@@ -48,28 +51,52 @@ class DefenseSystem:
         self.running = False
 
     def _process_packet(self, packet):
-        threat = self.detector.analyze(packet)
+        try:
+            threat = self.detector.analyze(packet)
+        except Exception as e:
+            print(f"[System] Detector error: {e}")
+            return
 
         if threat is None:
             return
 
         self.threats_detected += 1
-        self.responder.respond(threat)
+        
+        try:
+            self.responder.respond(threat)
+        except Exception as e:
+            print(f"[System] Responder error: {e}")
 
         if not self.continuous:
             self.running = False
 
     def _resolve_interface(self) -> Optional[str]:
+        """
+        Resolve network interface from listen_ip.
+        Returns None if no listen_ip specified or interface not found.
+        """
         if not self.listen_ip:
             return None
 
         try:
-            for iface in get_if_list():
-                if get_if_addr(iface) == self.listen_ip:
-                    return iface
-        except Exception:
-            pass
+            interfaces = get_if_list()
+            for iface in interfaces:
+                try:
+                    addr = get_if_addr(iface)
+                    if addr == self.listen_ip:
+                        return iface
+                except (OSError, ValueError):
+                    # Some interfaces may not have valid addresses
+                    continue
+                    
+        except OSError as e:
+            print(f"[System] Warning: Failed to enumerate interfaces: {e}")
+        except ImportError as e:
+            print(f"[System] Warning: Scapy interface functions unavailable: {e}")
 
+        if self.listen_ip:
+            print(f"[System] Warning: No interface found for IP {self.listen_ip}")
+        
         return None
 
     def _print_summary(self):

@@ -8,6 +8,7 @@ Usage:
     python setup.py --check
 """
 
+import os
 import sys
 import subprocess
 import socket
@@ -188,8 +189,6 @@ def print_test_instructions():
 
 
 def main():
-    import os
-
     print("\n")
     print("  ARP Defense System - Setup")
     print("  " + "=" * 40)

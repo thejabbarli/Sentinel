@@ -56,6 +56,20 @@ sudo python main.py
 python main.py --deception
 ```
 
+### All Options
+```bash
+python main.py --help
+
+Options:
+  --deception         Enable honeytoken injection
+  --beacon DOMAIN     Custom beacon domain (default: canary.yourdomain.com)
+  --interface IFACE   Network interface to monitor
+  --gateway IP        Manual gateway IP (skip auto-detection)
+  --log-file FILE     Attack log file (default: attack_log.txt)
+  --no-restore        Disable ARP restoration (alert/log only)
+  --verbose, -v       Enable debug logging
+```
+
 ### With Canary Server (Full Demo)
 ```bash
 # Terminal 1: Start canary server
@@ -100,16 +114,50 @@ python attacker_sim.py --beacon-url http://192.168.0.103:8080/webhook/test123
 arp_defense/
 ├── main.py              # Entry point
 ├── setup.py             # Configuration helper
-├── interfaces.py        # Abstract base classes
+├── interfaces.py        # Abstract base classes (IDetector, IResponder)
 ├── detector.py          # ARP spoof detection
-├── responders.py        # Passive defense
+├── responders.py        # Passive defense (alert, log, ARP restore)
 ├── deception.py         # Active defense (honeytokens)
 ├── defense_system.py    # Orchestrator
 ├── canary_server.py     # Catches attackers
 ├── test_detection.py    # Local testing
 ├── attacker_sim.py      # Demo attacker perspective
-├── config.py            # Configuration
-└── requirements.txt
+├── config.py            # Configuration dataclass
+├── requirements.txt     # Dependencies
+├── CHANGES.md           # Code quality improvements documentation
+└── README.md            # This file
+```
+
+## Architecture
+
+The system follows SOLID principles:
+
+- **Single Responsibility**: Each class has one job (detect, log, alert, restore, deceive)
+- **Open/Closed**: Add new responders without modifying existing code
+- **Liskov Substitution**: All responders are interchangeable via `IResponder`
+- **Interface Segregation**: Minimal interfaces (`IDetector`, `IResponder`)
+- **Dependency Inversion**: `DefenseSystem` depends on abstractions
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      DefenseSystem                          │
+│   (orchestrates detection and response)                     │
+└─────────────────┬───────────────────────┬───────────────────┘
+                  │                       │
+          ┌───────▼───────┐       ┌───────▼───────┐
+          │   IDetector   │       │   IResponder  │
+          │  (interface)  │       │  (interface)  │
+          └───────┬───────┘       └───────┬───────┘
+                  │                       │
+          ┌───────▼───────┐       ┌───────▼────────────────┐
+          │ArpSpoofDetector│      │   CompositeResponder   │
+          └───────────────┘       │  ┌─────────────────┐   │
+                                  │  │ AlertResponder  │   │
+                                  │  │ LogResponder    │   │
+                                  │  │ ArpRestoration  │   │
+                                  │  │ DeceptionResp.  │   │
+                                  │  └─────────────────┘   │
+                                  └────────────────────────┘
 ```
 
 ## Demo Scenario
@@ -125,6 +173,21 @@ The attacker cannot know which credentials are real. Using ANY captured data mig
 ## Requirements
 
 - Python 3.8+
-- Scapy
+- Scapy >= 2.5.0
 - Administrator/root privileges
 - Npcap (Windows) or libpcap (Linux)
+
+## Troubleshooting
+
+**"Cannot detect gateway"**
+- Check your network connection
+- Use `--gateway 192.168.x.1` to specify manually
+- Disable VPN if it's hiding the gateway
+
+**"Permission denied"**
+- Windows: Run Command Prompt as Administrator
+- Linux: Use `sudo python main.py`
+
+**"No module named scapy"**
+- Run: `pip install scapy`
+- On Linux: `sudo apt install python3-scapy`

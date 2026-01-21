@@ -35,6 +35,8 @@ wheels/
 *.log
 attack_log.txt
 defense_log.txt
+deception_log.txt
+canary_alerts.jsonl
 
 # OS
 .DS_Store
